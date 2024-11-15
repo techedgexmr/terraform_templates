@@ -1,2 +1,2 @@
 # terraform_templates
-testing some boilerplate templates
+Testing some boilerplate templates
