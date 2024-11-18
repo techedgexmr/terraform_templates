@@ -49,11 +49,3 @@ resource "aws_cloudwatch_event_target" "sns_target" {
   arn       = aws_sns_topic.terminate_instances_topic.arn
   event_bus_name = aws_cloudwatch_event_bus.custom_bus.name
 }
-
-# Grant EventBridge permissions to the rule
-resource "aws_cloudwatch_event_permission" "allow_eventbridge" {
-  principal    = "events.amazonaws.com"
-  statement_id = "Allow_Custom_Bus_Invoke"
-  action       = "events:PutEvents"
-  event_bus_name = aws_cloudwatch_event_bus.custom_bus.name
-}
