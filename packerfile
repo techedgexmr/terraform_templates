@@ -1,0 +1,77 @@
+# rhel9-partitions.pkr.hcl
+
+```hcl
+variable "region" {
+  default = "us-east-1"
+}
+
+variable "source_ami" {
+  default = "ami-1234567890abcdef0" # Replace with the correct RHEL9 AMI ID
+}
+
+variable "instance_type" {
+  default = "t3.medium"
+}
+
+source "amazon-ebs" "rhel9" {
+  region                  = var.region
+  source_ami              = var.source_ami
+  instance_type           = var.instance_type
+  ssh_username            = "ec2-user"  # Change default SSH user to ec2-user
+  ami_name                = "rhel9-custom-{{timestamp}}"
+  associate_public_ip_address = true
+  launch_block_device_mappings {
+    device_name = "/dev/xvda"
+    volume_size = 50  
+    volume_type = "gp3"
+    delete_on_termination = true
+  }
+}
+
+build {
+  sources = ["source.amazon-ebs.rhel9"]
+
+  provisioner "shell" {
+    inline = [
+      # Ensure ec2-user exists with sudo access
+      "sudo useradd -m -s /bin/bash ec2-user || true",
+      "sudo usermod -aG wheel ec2-user",
+      "echo 'ec2-user ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/ec2-user",
+      "sudo chmod 0440 /etc/sudoers.d/ec2-user",
+
+      # Install necessary tools
+      "sudo yum install -y cloud-utils-growpart parted",
+
+      # Repartition disk
+      "sudo parted /dev/xvda --script mklabel gpt",
+      "sudo parted -a optimal /dev/xvda --script mkpart primary xfs 1MiB 10GiB",  # /boot
+      "sudo parted -a optimal /dev/xvda --script mkpart primary xfs 10GiB 20GiB", # /
+      "sudo parted -a optimal /dev/xvda --script mkpart primary xfs 20GiB 30GiB", # /var
+      "sudo parted -a optimal /dev/xvda --script mkpart primary xfs 30GiB 40GiB", # /var/log
+      "sudo parted -a optimal /dev/xvda --script mkpart primary xfs 40GiB 50GiB", # /var/tmp
+
+      # Format partitions
+      "sudo mkfs.xfs /dev/xvda1",
+      "sudo mkfs.xfs /dev/xvda2",
+      "sudo mkfs.xfs /dev/xvda3",
+      "sudo mkfs.xfs /dev/xvda4",
+      "sudo mkfs.xfs /dev/xvda5",
+
+      # Mount partitions
+      "sudo mkdir -p /mnt/root && mount /dev/xvda2 /mnt/root",
+      "sudo mkdir -p /mnt/root/boot && mount /dev/xvda1 /mnt/root/boot",
+      "sudo mkdir -p /mnt/root/var && mount /dev/xvda3 /mnt/root/var",
+      "sudo mkdir -p /mnt/root/var/log && mount /dev/xvda4 /mnt/root/var/log",
+      "sudo mkdir -p /mnt/root/var/tmp && mount /dev/xvda5 /mnt/root/var/tmp",
+
+      # Update fstab
+      "echo '/dev/xvda1 /boot xfs defaults 0 0' | sudo tee -a /etc/fstab",
+      "echo '/dev/xvda2 / xfs defaults 0 0' | sudo tee -a /etc/fstab",
+      "echo '/dev/xvda3 /var xfs defaults 0 0' | sudo tee -a /etc/fstab",
+      "echo '/dev/xvda4 /var/log xfs defaults 0 0' | sudo tee -a /etc/fstab",
+      "echo '/dev/xvda5 /var/tmp xfs defaults 0 0' | sudo tee -a /etc/fstab",
+
+      "echo 'Partitioning complete!'"
+    ]
+  }
+}
