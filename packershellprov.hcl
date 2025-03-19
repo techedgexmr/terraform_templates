@@ -21,6 +21,13 @@ provisioner "shell" {
     "mount /dev/vg_root/lv_home /mnt/home",
     "mount /dev/vg_root/lv_tmp /mnt/tmp",
     "mount /dev/vg_root/lv_log /mnt/log",
-    "mount /dev/vg_root/lv_audit /mnt/audit"
+    "mount /dev/vg_root/lv_audit /mnt/audit",
+    # Add entries to /etc/fstab for automatic mounting
+    "echo '/dev/vg_root/lv_root / xfs defaults 0 0' >> /etc/fstab",
+    "echo '/dev/vg_root/lv_var /var xfs defaults 0 0' >> /etc/fstab",
+    "echo '/dev/vg_root/lv_home /home xfs defaults 0 0' >> /etc/fstab",
+    "echo '/dev/vg_root/lv_tmp /tmp xfs defaults 0 0' >> /etc/fstab",
+    "echo '/dev/vg_root/lv_log /var/log xfs defaults 0 0' >> /etc/fstab",
+    "echo '/dev/vg_root/lv_audit /var/audit xfs defaults 0 0' >> /etc/fstab"
   ]
 }
