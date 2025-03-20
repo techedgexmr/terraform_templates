@@ -1,0 +1,62 @@
+---
+- name: Ensure all mounts have at least 10G available
+  hosts: rhel9_servers
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: Get disk space usage
+      ansible.builtin.shell: |
+        df -h --output=avail,target | tail -n +2
+      register: disk_usage
+      changed_when: false
+
+    - name: Parse mount usage
+      set_fact:
+        mounts: "{{ disk_usage.stdout_lines | map('split') | list }}"
+
+    - name: Display mount usage
+      debug:
+        var: mounts
+
+    - name: Check for mounts with less than 10G available
+      set_fact:
+        mounts_below_10G: "{{ mounts | selectattr('0', 'search', '^[0-9.]+G') | selectattr('0', 'lt', '10G') | list }}"
+
+    - name: Display mounts below 10G
+      debug:
+        var: mounts_below_10G
+
+    - name: Get LVM details
+      ansible.builtin.shell: |
+        lvs --noheadings -o lv_name,vg_name,lv_size
+      register: lvm_info
+      changed_when: false
+
+    - name: Display LVM info
+      debug:
+        var: lvm_info.stdout_lines
+
+    - name: Extend LVM and filesystem
+      when: mounts_below_10G | length > 0
+      block:
+        - name: Identify VG and LV to extend
+          ansible.builtin.shell: |
+            df --output=source,target | grep "{{ item[1] }}" | awk '{print $1}'
+          loop: "{{ mounts_below_10G }}"
+          register: lv_paths
+          changed_when: false
+
+        - name: Extend the logical volume by 10G
+          ansible.builtin.shell: |
+            lvextend -L +10G {{ item.stdout }}
+          loop: "{{ lv_paths.results }}"
+          when: item.stdout != ""
+          changed_when: true
+
+        - name: Resize the filesystem
+          ansible.builtin.shell: |
+            resize2fs {{ item.stdout }}
+          loop: "{{ lv_paths.results }}"
+          when: item.stdout != ""
+          changed_when: true
